@@ -8,6 +8,7 @@ MIT License Applies
 Options
 -----------------
 showWeekends: boolean
+skipWeekends: boolean
 data: object
 cellWidth: number
 cellHeight: number
@@ -43,6 +44,7 @@ behavior: {
     	var els = this;
         var defaults = {
             showWeekends: true,
+            skipWeekends: false,
             cellWidth: 21,
             cellHeight: 31,
             slideWidth: 400,
@@ -111,7 +113,7 @@ behavior: {
             addHzHeader(slideDiv, dates, opts.cellWidth);
             addGrid(slideDiv, opts.data, dates, opts.cellWidth, opts.showWeekends);
             addBlockContainers(slideDiv, opts.data);
-            addBlocks(slideDiv, opts.data, opts.cellWidth, opts.start);
+            addBlocks(slideDiv, opts.data, opts.cellWidth, opts.start, opts.skipWeekends);
             div.append(slideDiv);
             applyLastClass(div.parent());
 		}
@@ -216,17 +218,18 @@ behavior: {
             div.append(blocksDiv);
         }
 
-        function addBlocks(div, data, cellWidth, start) {
+        function addBlocks(div, data, cellWidth, start, skipWeekends) {
             var rows = jQuery("div.ganttview-blocks div.ganttview-block-container", div);
             var rowIdx = 0;
             for (var i = 0; i < data.length; i++) {
                 for (var j = 0; j < data[i].series.length; j++) {
                     var series = data[i].series[j];
                     var size = DateUtils.daysBetween(series.start, series.end) + 1;
+                    let totalDays = skipWeekends ? DateUtils.workdaysBetween(series.start, series.end) : size;
 					var offset = DateUtils.daysBetween(start, series.start);
 					var block = jQuery("<div>", {
                         "class": "ganttview-block",
-                        "title": series.name + ", " + size + " days",
+                        "title": series.name + ", " + totalDays + " days",
                         "css": {
                             "width": ((size * cellWidth) - 9) + "px",
                             "margin-left": ((offset * cellWidth) + 3) + "px"
@@ -236,7 +239,7 @@ behavior: {
                     if (data[i].series[j].color) {
                         block.css("background-color", data[i].series[j].color);
                     }
-                    block.append(jQuery("<div>", { "class": "ganttview-block-text" }).text(size));
+                    block.append(jQuery("<div>", { "class": "ganttview-block-text" }).text(totalDays));
                     jQuery(rows[rowIdx]).append(block);
                     rowIdx = rowIdx + 1;
                 }
@@ -271,11 +274,11 @@ behavior: {
         	}
         	
             if (opts.behavior.resizable) { 
-            	bindBlockResize(div, opts.cellWidth, opts.start, opts.behavior.onResize); 
+            	bindBlockResize(div, opts.cellWidth, opts.start, opts.skipWeekends, opts.behavior.onResize); 
         	}
             
             if (opts.behavior.draggable) { 
-            	bindBlockDrag(div, opts.cellWidth, opts.start, opts.behavior.onDrag); 
+            	bindBlockDrag(div, opts.cellWidth, opts.start, opts.skipWeekends, opts.behavior.onDrag); 
         	}
 		}
 
@@ -285,31 +288,31 @@ behavior: {
             });
         }
         
-        function bindBlockResize(div, cellWidth, startDate, callback) {
+        function bindBlockResize(div, cellWidth, startDate, skipWeekends, callback) {
         	jQuery("div.ganttview-block", div).resizable({
         		grid: cellWidth, 
         		handles: "e,w",
         		stop: function () {
         			var block = jQuery(this);
-        			updateDataAndPosition(div, block, cellWidth, startDate);
+        			updateDataAndPosition(div, block, cellWidth, startDate, skipWeekends);
         			if (callback) { callback(block.data("block-data")); }
         		}
         	});
         }
         
-        function bindBlockDrag(div, cellWidth, startDate, callback) {
+        function bindBlockDrag(div, cellWidth, startDate, skipWeekends, callback) {
         	jQuery("div.ganttview-block", div).draggable({
         		axis: "x", 
         		grid: [cellWidth, cellWidth],
         		stop: function () {
         			var block = jQuery(this);
-        			updateDataAndPosition(div, block, cellWidth, startDate);
+        			updateDataAndPosition(div, block, cellWidth, startDate, skipWeekends);
         			if (callback) { callback(block.data("block-data")); }
         		}
         	});
         }
         
-        function updateDataAndPosition(div, block, cellWidth, startDate) {
+        function updateDataAndPosition(div, block, cellWidth, startDate, skipWeekends) {
         	var container = jQuery("div.ganttview-slide-container", div);
         	var scroll = container.scrollLeft();
 			var offset = block.offset().left - container.offset().left - 1 + scroll;
@@ -323,7 +326,11 @@ behavior: {
         	var width = block.outerWidth();
 			var numberOfDays = Math.round(width / cellWidth) - 1;
 			block.data("block-data").end = newStart.clone().addDays(numberOfDays);
-			jQuery("div.ganttview-block-text", block).text(numberOfDays + 1);
+
+            // get totalDays
+            let totalDays = skipWeekends ? DateUtils.workdaysBetween(block.data("block-data").start, block.data("block-data").end) : numberOfDays + 1;
+            jQuery("div.ganttview-block-text", block).text(totalDays);
+            block.attr('title', block.data("block-data").name + ", " + totalDays + " days");
 			
 			// Remove top and left properties to avoid incorrect block positioning,
         	// set position to relative to keep blocks relative to scrollbar when scrolling
@@ -353,6 +360,20 @@ behavior: {
             if (start.getYear() == 1901 || end.getYear() == 8099) { return 0; }
             var count = 0, date = start.clone();
             while (date.compareTo(end) == -1) { count = count + 1; date.addDays(1); }
+            return count;
+        },
+
+        workdaysBetween: function (start, end) {
+            if (!start || !end) { return 0; }
+            start = Date.parse(start); end = Date.parse(end);
+            if (start.getYear() == 1901 || end.getYear() == 8099) { return 0; }
+            var count = 0, date = start.clone();
+            while(date.compareTo(end) < 1) {
+                if (DateUtils.isWeekend(date) === false) {
+                    count = count + 1;
+                }
+                date.addDays(1);
+            }
             return count;
         },
         

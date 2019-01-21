@@ -30,6 +30,7 @@
 		$(function () {
 			$("#ganttChart").ganttView({ 
 				data: ganttData,
+                skipWeekends: true,
 				slideWidth: 900,
 				behavior: {
 					onClick: function (data) { 
